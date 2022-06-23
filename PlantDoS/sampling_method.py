@@ -28,9 +28,6 @@ class random_sampling(object):
 
         return random_sampling_all_trial
     
-
-
-
 class population_annealing(object):
     
     column_name = ['Conc', 'SM2_eq', 'Temp', 'Time', 'Total_failure', 'SM1_failure', 'SM2_failure', 'Iso_failure', 'Bis_failure', 'Yield', 'E_factor', 'Material_cost', 'STY']
@@ -67,13 +64,12 @@ class population_annealing(object):
         q = np.exp(-beta*(_scores-old_score))     #minimize    
         if (q > np.random.rand(1)):
             pos = newnode
-            old_score = _scores
             flag = 1
             old_results = results
         else:
             flag = 0
         
-        return old_results, results, flag
+        return old_results, results, pos, flag
     
     def random_walk(self, newnode, pos):
         move = (np.random.randint(0,2)*2 - 1) * (np.random.randint(0,self.walk_step) + 1) #random selection of step 
@@ -104,19 +100,19 @@ class population_annealing(object):
                 #set inverse temperature
                 beta = self.betas[beta_iter]
                 #resamping
-                points = self.resampling(beta, old_beta, curr_points)
+                curr_points = self.resampling(beta, old_beta, curr_points)
                 #Metropolis                            
                 for siter in range(self.num_population):
-                    df_idx = points[siter,0]*self.range_num**3 + points[siter,1]*self.range_num**2 + points[siter,2]*self.range_num + points[siter,3]
+                    df_idx = curr_points[siter,0]*self.range_num**3 + curr_points[siter,1]*self.range_num**2 + curr_points[siter,2]*self.range_num + curr_points[siter,3]
                     old_results = self.true_distribution_df.iloc[df_idx,:]
-                    pos = points[siter,:]
+                    pos = curr_points[siter,:]
                     for i in range(self.mcmc_num):
-                        old_results, results, flag = self.mcmc(pos,beta,old_results)
-                        EPA_sampling_df = EPA_sampling_df.append(old_results)
-                        _EPA_sampling_df = _EPA_sampling_df.append(results)
+                        old_results, results, pos, flag = self.mcmc(pos,beta,old_results)
+                        EPA_sampling_df = EPA_sampling_df.append(old_results)        #old_results is updated only if accepted
+                        _EPA_sampling_df = _EPA_sampling_df.append(results)          #results of suggested points 
                         flag_list.append(flag)
                         beta_list.append(beta)                    
-                    points[siter,:] = pos
+                    curr_points[siter,:] = pos
                 oldbeta = beta
             EPA_sampling_df['beta'] = beta_list
             _EPA_sampling_df['beta'] = beta_list
@@ -131,4 +127,3 @@ class population_annealing(object):
             
         return EPA_sampling_all_trial, _EPA_sampling_all_trial
     
-
