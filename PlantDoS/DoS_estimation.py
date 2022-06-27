@@ -1,4 +1,7 @@
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
 
 class dos_estimation(object):
     
@@ -64,3 +67,124 @@ class dos_estimation(object):
                 estdists[beta_iter,id_num] = estdists[beta_iter,id_num]+1
         return estdists
         
+    def gray_plot(self, true_distribution_df, energy_variable, gray_variable, energy_levels, gray_levels_num, xlabel, ylabel, title, samples=None, betas=None, f=None, imshow=False, vmin=-7, vmax=-3):
+        
+        #parameter setting for graybox dos estimation
+        energy_threshold = energy_levels[-1]
+        energy_levels[0] = energy_levels[0] - 1e-10
+        energies = true_distribution_df[energy_variable]
+        grays = true_distribution_df[gray_variable]
+        gray_max = grays[energies<=energy_threshold].max() + 1e-10
+        gray_min = grays[energies<=energy_threshold].min()
+        gray_width = gray_max - gray_min
+            
+        #gray box dos estimation
+        if samples is not None:
+            energies = samples[energy_variable]
+            grays = samples[gray_variable]
+            
+            if 'beta' in samples.columns:
+                estdists = self.graybox_epa_dos(energy_levels, gray_levels_num, energies, grays, gray_min, gray_width, energy_threshold, betas, f, samples, energy_variable)
+            else:
+                estdists = self.graybox_dos(energy_levels, gray_levels_num, energies, grays, gray_min, gray_width, energy_threshold)
+        else:
+            energies = true_distribution_df[energy_variable]
+            grays = true_distribution_df[gray_variable]
+            estdists = self.graybox_dos(energy_levels, gray_levels_num, energies, grays, gray_min, gray_width, energy_threshold)
+
+        #dataframe for counter plot
+        gray_label_list = [round(gray_min+i*gray_width/gray_levels_num,3) for i in range(gray_levels_num)]
+        energy_label_list = ['{}%'.format(round(i*100,1)) for i in energy_levels[1:]]
+        counter_df = self.make_counter_df(estdists, gray_label_list, energy_label_list, imshow=imshow)
+
+        #plot
+        if imshow==False:
+            plt.figure(figsize=(12,8)) 
+            ax = sns.heatmap(counter_df,annot=True,cmap="Blues",vmin=vmin,vmax=vmax)
+        
+        else:
+            counter_plot = counter_df.to_numpy()
+            xticks = [i for i in range(len(gray_label_list))]
+            yticks = [i for i in range(len(energy_label_list))]
+            fig, ax = plt.subplots(figsize=(12,8))
+            im = ax.imshow(counter_plot, cmap="Blues",vmin=vmin,vmax=vmax, interpolation='bicubic', aspect=len(gray_label_list)/len(energy_label_list))
+            fig.colorbar(im, ax=ax)
+            ax.set_xticks(xticks)
+            ax.set_xticklabels(gray_label_list)
+            ax.set_yticks(yticks)
+            ax.set_yticklabels(energy_label_list)
+            
+        ax.invert_yaxis()
+        plt.xlabel(xlabel, fontsize=15)
+        plt.ylabel(ylabel, fontsize=15)
+        plt.title(title, fontsize=20)
+
+        
+    def make_counter_df(self, estdists, gray_label_list, energy_label_list, imshow=False):
+        if imshow==True:
+            estdists[estdists==0] = 1.0e-10     #avoid error when imshow is used
+        estdists = np.log10(estdists)
+        counter_df = pd.DataFrame(estdists)
+        counter_df = counter_df.iloc[:-1,:-1] #remove out of scope
+        counter_df.index = energy_label_list
+        counter_df.columns = gray_label_list
+        
+        return counter_df
+        
+    def graybox_dos(self, energy_levels, gray_levels_num, energies, grays, gray_min, gray_width, energy_threshold):
+        energy_levels_num = len(energy_levels) - 1
+        estdists = np.zeros([energy_levels_num + 1, gray_levels_num+1])
+        for sc1, sc2 in zip(energies,grays):
+            for energy_level_index in range(energy_levels_num):
+                if energy_levels[energy_level_index] < sc1 <= energy_levels[energy_level_index+1]:
+                    id_num1 = energy_level_index       #index of descrete space of energy
+                if sc1 > energy_threshold:
+                    id_num1 = energy_levels_num        #out of range (bigger than energy threshold)
+            id_num2 = np.floor((sc2-gray_min)/(gray_width/gray_levels_num)).astype(int) #index of descrete space of a graybox varialble
+            if id_num2 >= gray_levels_num:
+                id_num2 = gray_levels_num              #out of range (bigger than max graybox values within the thres energy)
+            elif id_num2 < 0:
+                id_num2 = gray_levels_num              #out of range (smaller than min graybox values within the thres energy)
+            estdists[id_num1,id_num2] = estdists[id_num1,id_num2]+1
+        estdists = estdists/np.sum(estdists)
+        
+        return estdists
+    
+    def graybox_epa_dos(self, energy_levels, gray_levels_num, energies, grays, gray_min, gray_width, energy_threshold, betas, f, samples, energy_variable):
+        energy_levels_num = len(energy_levels) - 1
+        gray_step_value = gray_width/gray_levels_num
+        gray_step_values = [gray_min+i*gray_step_value for i in range(gray_levels_num + 1)]
+        weight = self.weight_calc(betas, f, samples, energy_variable)
+        estdists = np.zeros([energy_levels_num + 1, gray_levels_num+1])
+        for sc1, sc2, wg in zip(energies,grays,weight):
+            for energy_level_index in range(energy_levels_num):
+                if energy_levels[energy_level_index] < sc1 <= energy_levels[energy_level_index+1]:
+                    id_num1 = energy_level_index       #index of descrete space of energy
+                if sc1 > energy_threshold:
+                    id_num1 = energy_levels_num        #out of range (bigger than energy threshold)
+            id_num2 = np.floor((sc2-gray_min)/(gray_width/gray_levels_num)).astype(int) #index of descrete space of a graybox varialble
+            if id_num2 >= gray_levels_num:
+                id_num2 = gray_levels_num              #out of range (bigger than max graybox values within the thres energy)
+            elif id_num2 < 0:
+                id_num2 = gray_levels_num              #out of range (smaller than min graybox values within the thres energy)
+            estdists[id_num1,id_num2] = estdists[id_num1,id_num2]+wg  #sum weight
+        estdists = estdists/np.sum(estdists)
+
+        return estdists
+    
+    def weight_calc(self, betas, f, EPA_samples, energy_column):
+        
+        R = np.zeros([self.energy_level,len(betas)])
+        estdists = self.make_histogram(betas, EPA_samples, energy_column)
+        for i in range(self.energy_level):
+            for j in range(len(betas)):
+                R[i][j] = sum(estdists[j,:])*np.exp(-betas[j]*self.energy_state[i] + f[j])
+            R[i] = R[i]/np.sum(R[i])
+            
+        weights = np.zeros(len(EPA_samples))
+        for i, row in enumerate(EPA_samples.iterrows()):
+            beta_index = np.where(betas==row[1]['beta']) 
+            energy_index = int((row[1][energy_column]-self.energy_min)/self.width*len(self.energy_state))
+            weights[i] = (R[energy_index][beta_index]*np.exp(betas[beta_index]*self.energy_state[energy_index]-f[beta_index]))
+            
+        return weights
