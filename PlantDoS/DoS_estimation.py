@@ -67,7 +67,7 @@ class dos_estimation(object):
                 estdists[beta_iter,id_num] = estdists[beta_iter,id_num]+1
         return estdists
         
-    def gray_plot(self, true_distribution_df, energy_variable, gray_variable, energy_levels, gray_levels_num, xlabel, ylabel, title, samples=None, betas=None, f=None, imshow=False, vmin=-7, vmax=-3):
+    def gray_plot(self, true_distribution_df, energy_variable, gray_variable, energy_levels, gray_levels_num, xlabel, ylabel, title, figname=None, samples=None, betas=None, f=None, imshow=False, vmin=-7, vmax=-3):
         
         #parameter setting for graybox dos estimation
         energy_threshold = energy_levels[-1]
@@ -118,6 +118,8 @@ class dos_estimation(object):
         plt.xlabel(xlabel, fontsize=15)
         plt.ylabel(ylabel, fontsize=15)
         plt.title(title, fontsize=20)
+        if figname is not None:
+            plt.savefig(figname)
 
         
     def make_counter_df(self, estdists, gray_label_list, energy_label_list, imshow=False):
@@ -188,3 +190,33 @@ class dos_estimation(object):
             weights[i] = (R[energy_index][beta_index]*np.exp(betas[beta_index]*self.energy_state[energy_index]-f[beta_index]))
             
         return weights
+    
+    def observable_dos(self, observables, observable_levels_num, observable_max, observable_min):
+        
+        energy_max = observable_max+0.00001
+        energy_min = observable_min
+        width = energy_max - energy_min
+
+        observable_dos = np.zeros(observable_levels_num)
+        for score in observables:
+            id_num = np.floor((score-energy_min)/(width/observable_levels_num)).astype(int)
+            observable_dos[id_num] = observable_dos[id_num]+1
+        observable_dos = observable_dos/sum(observable_dos)
+
+        return observable_dos
+    
+    def observable_epa_dos(self, observables, weights, observable_levels_num, observable_max, observable_min):
+
+        energy_max = observable_max+0.00001
+        energy_min = observable_min
+        width = energy_max - energy_min
+
+        observable_dos = np.zeros(observable_levels_num)
+        for score, weight in zip(observables, weights):
+            id_num = np.floor((score-energy_min)/(width/observable_levels_num)).astype(int)
+            observable_dos[id_num] = observable_dos[id_num] + weight
+        observable_dos = observable_dos/sum(observable_dos)
+
+        return observable_dos
+    
+    
